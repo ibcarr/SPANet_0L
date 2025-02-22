@@ -51,7 +51,8 @@ class EventInfo:
 
         # Information about auxiliary values attached to this event.
         regressions: FeynmanDict[str, List[RegressionInfo]],
-        classifications: FeynmanDict[str, List[ClassificationInfo]]
+        classifications: FeynmanDict[str, List[ClassificationInfo]],
+        weights: FeynmanDict[str, List[WeightsInfo]]
     ):
 
         self.input_types = input_types
@@ -80,6 +81,7 @@ class EventInfo:
 
         self.regressions = regressions
         self.classifications = classifications
+        self.weights = weights
 
     def __str__(self):
         info = []
@@ -318,12 +320,14 @@ class EventInfo:
         # -----------------------------------
         classifications = key_with_default(config, SpecialKey.Classifications, default={})
         classifications = feynman_fill(classifications, event_particles, product_particles, constructor=list)
-
+        weights = key_with_default(config, SpecialKey.Weights, default={})
+        weights = feynman_fill(weights, event_particles, product_particles, constructor=list)
         return cls(
             input_types,
             input_features,
             event_particles,
             product_particles,
             regressions,
-            classifications
+            classifications,
+            weights
         )

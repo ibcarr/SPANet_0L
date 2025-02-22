@@ -177,7 +177,8 @@ class JetReconstructionTraining(JetReconstructionNetwork):
             self,
             total_loss: List[Tensor],
             predictions: Dict[str, Tensor],
-            targets: Dict[str, Tensor]
+            targets: Dict[str, Tensor],
+            weights: Dict[str, Tensor]
     ) -> List[Tensor]:
         classification_terms = []
 
@@ -190,13 +191,25 @@ class JetReconstructionTraining(JetReconstructionNetwork):
                 current_prediction,
                 current_target,
                 ignore_index=-1,
-                weight=weight
+                weight='none'
             )
+            # Apply the weights
+            device = current_target.device
+            class_weights = torch.ones(len(current_target),device=device)
+            for i,w in enumerate(weight):
+                class_weights[current_target==i]*=w
+            event_weights = weights['EVENT/event_weights']
+            #for i,w in enumerate(weight):
+            #    event_weights[current_target==i]*=w
 
-            classification_terms.append(self.options.classification_loss_scale * current_loss)
+            weighted_losses = current_loss * event_weights * class_weights
+            # Compute the weighted average loss
+            weighted_average_loss = weighted_losses.sum() / (event_weights * class_weights).sum()
+
+            classification_terms.append(self.options.classification_loss_scale * weighted_average_loss)
 
             with torch.no_grad():
-                self.log(f"loss/classification/{key}", current_loss, sync_dist=True)
+                 self.log(f"loss/classification/{key}", weighted_average_loss, sync_dist=True)
 
         return total_loss + classification_terms
 

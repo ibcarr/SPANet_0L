@@ -111,7 +111,7 @@ class JetReconstructionDataset(Dataset):
             self.assignments = self.load_assignments(file, limit_index)
             self.regressions, self.regression_types = self.load_regressions(file, limit_index)
             self.classifications = self.load_classifications(file, limit_index)
-
+            self.weights = self.load_weights(file, limit_index)
             # Update size information after loading and limiting dataset.
             self.num_events = limit_index.shape[0]
             self.num_vectors = sum(source.num_vectors() for source in self.sources.values())
@@ -281,6 +281,26 @@ class JetReconstructionDataset(Dataset):
 
         return targets
 
+    
+    def load_weights(self, hdf5_file: h5py.File, limit_index: np.ndarray) -> Dict[str, Tensor]:
+        tree_key_data = functools.partial(self.tree_key_data, hdf5_file, limit_index, SpecialKey.Weights)
+        event_weights = OrderedDict()
+        def add_target(key, value):
+            event_weights[key] = value
+        for target in self.event_info.weights[SpecialKey.Event]:
+            add_target(*tree_key_data([SpecialKey.Event], target))
+        for particle in self.event_info.product_particles:
+            for target in self.event_info.weights[particle][SpecialKey.Particle]:
+                add_target(*tree_key_data([particle, SpecialKey.Particle], target))
+            for daughter in self.event_info.product_particles[particle]:
+                for target in self.event_info.weights[particle][daughter]:
+                    add_target(*tree_key_data([particle, daughter], target))
+        return event_weights
+
+
+
+
+
     def compute_source_statistics(
             self,
             mean: Optional[Dict[str, Tensor]] = None,
@@ -431,6 +451,9 @@ class JetReconstructionDataset(Dataset):
 
         for key, classifications in self.classifications.items():
             self.classifications[key] = classifications[event_mask]
+        
+        for key, weights in self.weights.items():
+            self.weights[key] = weights[event_mask]
 
         self.num_events = event_mask.sum().item()
         self.num_vectors = sum(source.num_vectors() for source in self.sources.values())
@@ -473,11 +496,16 @@ class JetReconstructionDataset(Dataset):
             for key, value in self.classifications.items()
             if value is not None
         }
-
+        weights = {
+            key: value[item]
+            for key, value in self.weights.items()
+            if value is not None
+        }
         return Batch(
             sources,
             self.num_vectors[item],
             assignments,
             regressions,
-            classifications
+            classifications,
+            weights
         )
